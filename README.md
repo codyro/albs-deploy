@@ -23,6 +23,8 @@ You can deploy build system in a really fast way. Let's get started.
   immudb_database: <immudb database name to be used>
   immudb_address: <url in format `host:port` of immudb instance, default port is 3322>
   immudb_public_key_file: <path of the public key to use>
+  cas_api_key: '' # If you have a CAS signer token, you can write it in this parameter. Otherwise, leave it empty ''.
+  cas_signer_id: '' # you have a CAS signer email, you can write it in this parameter. Otherwise, leave it empty ''.
   frontend_baseurl: http://<Preferred hostname or IP address>:8080
   ```
   if you want deploy build system on remote machine add the following parameters.
