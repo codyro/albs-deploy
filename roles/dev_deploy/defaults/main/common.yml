@@ -33,5 +33,11 @@ created_directories:
 
 packages:
   - "gnupg"
+  - "docker-ce"
+  - "docker-ce-cli"
+  - "docker-compose-plugin"
+  - "containerd.io"
+  - "python3"
+  - "python3-pip"
 
 postgres_password: "{{ postgres_password | urlencode  }}"

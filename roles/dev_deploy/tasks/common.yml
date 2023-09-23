@@ -1,37 +1,95 @@
 ---
+- name: Add Docker CE repository
+  ansible.builtin.yum_repository:
+    name: docker-ce
+    description: Docker CE Repository
+    baseurl: "https://download.docker.com/linux/centos/$releasever/$basearch/stable"
+    gpgcheck: true
+    enabled: true
+  tags:
+    - dependencies
+    - docker
+
+- name: Import Docker GPG key
+  ansible.builtin.rpm_key:
+    state: present
+    key: https://download.docker.com/linux/centos/gpg
+  tags:
+    - dependencies
+    - docker
+
 - name: Install packages
-  package:
+  ansible.builtin.dnf:
     state: present
     name: "{{ packages }}"
-  become: "yes"
+  become: true
+  tags:
+    - dependencies
+    - docker
 
-- name: Check and install necessary pip packages
-  pip:
+- name: Start/Enable docker
+  ansible.builtin.systemd:
+    name: docker.service
+    state: started
+    enabled: true
+  tags:
+    - dependencies
+    - docker
+
+- name: Add albs user
+  ansible.builtin.user:
+    name: albs
+    state: present
+    shell: /bin/bash
+    createhome: true
+  tags:
+    - dependencies
+    - docker
+
+- name: Add albs user to docker group
+  ansible.builtin.user:
+    name: albs
+    groups: docker
+    append: true
+  changed_when: false
+  tags:
+    - dependencies
+    - docker
+
+- name: Check and install necessary Python packages
+  ansible.builtin.dnf:
     name: "{{ item }}"
     state: present
   loop:
-    - requests
-    - PyJWT
-  become: "yes"
+    - python3-requests
+    - python3-jwt
+  become: true
+  tags:
+    - dependencies
 
+# TODO: Use package manager to handle NodeJS sections below
 - name: Install NVM
-  shell: |
+# noqa: command-instead-of-module
+  ansible.builtin.shell: |
+    set -o pipefail
     curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/{{ nvm_version }}/install.sh | bash
   args:
     creates: "{{ ansible_env.HOME }}/.nvm"
 
 - name: Check current Node.js version
-  shell: |
+  ansible.builtin.shell: |
     export NVM_DIR="$HOME/.nvm"
     [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
     node -v || echo none
   args:
     executable: /bin/bash
   register: node_check
-  ignore_errors: yes
+  changed_when: false
+  ignore_errors: true
 
 - name: Install Node.js version
-  shell: |
+  # noqa: no-changed-when
+  ansible.builtin.shell: |
     export NVM_DIR="$HOME/.nvm"
     [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
     nvm install {{ node_version }}
@@ -41,40 +99,46 @@
   when: node_version not in node_check.stdout
 
 - name: Switch to Node.js version
-  shell: |
+  # noqa: no-changed-when
+  ansible.builtin.shell: |
     export NVM_DIR="$HOME/.nvm"
     [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
     nvm use {{ node_version }}
   args:
     executable: /bin/bash
   when: node_version in node_check.stdout
-  ignore_errors: yes
 
 - name: Check Node.js version
-  shell: |
+  ansible.builtin.shell: |
     export NVM_DIR="$HOME/.nvm"
     [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
     node -v
   args:
     executable: /bin/bash
+  changed_when: false
   register: result
 
-- debug: var=result.stdout_lines
+- name: Debug stdout_lines
+  ansible.builtin.debug:
+    var: result.stdout_lines
 
 - name: Generate albs_jwt_token
-  tags: 
+  tags:
     - jwt_tokens
     - albs_jwt_token
-  shell: >
-    python3 -c "import jwt; import datetime; secret = '{{ albs_jwt_secret }}'; payload = {'sub': '1', 'aud': ['fastapi-users:auth'], 'exp': 1777628461}; token = jwt.encode(payload, secret, algorithm='HS256'); print(token)"
+  # noqa: no-changed-when
+  ansible.builtin.shell: >-
+    python3 -c "import jwt; import datetime; secret = '{{ albs_jwt_secret }}'; payload = {'sub': '1', 'aud': ['fastapi-users:auth'], 'exp': 1777628461};
+    token = jwt.encode(payload, secret, algorithm='HS256'); print(token)"
   register: albs_jwt_result
+  changed_when: false
   when: albs_jwt_token is not defined or albs_jwt_token == ""
 
 - name: Set albs_jwt_token variable
   tags:
     - jwt_tokens
     - albs_jwt_token
-  set_fact:
+  ansible.builtin.set_fact:
     albs_jwt_token: "{{ albs_jwt_result.stdout }}"
   when: albs_jwt_token is not defined or albs_jwt_token == ""
 
@@ -82,8 +146,10 @@
   tags:
     - jwt_tokens
     - alts_jwt_token
-  shell: >
-    python3 -c "import jwt; import datetime; secret = '{{ alts_jwt_secret }}'; payload = {'email': 'base_user@almalinux.org'}; token = jwt.encode(payload, secret, algorithm='HS256'); print(token)"
+  # noqa: no-changed-when
+  ansible.builtin.shell: >-
+    python3 -c "import jwt; import datetime; secret = '{{ alts_jwt_secret }}'; payload = {'email': 'base_user@almalinux.org'};
+    token = jwt.encode(payload, secret, algorithm='HS256'); print(token)"
   register: alts_jwt_result
   when: alts_jwt_token is not defined or alts_jwt_token == ""
 
@@ -91,19 +157,21 @@
   tags:
     - jwt_tokens
     - alts_jwt_token
-  set_fact:
+  ansible.builtin.set_fact:
     alts_jwt_token: "{{ alts_jwt_result.stdout }}"
   when: alts_jwt_token is not defined or alts_jwt_token == ""
 
 - name: Clone ALBS sources
   tags: clone-albs-sources
   git:
+  # noqa: latest[git]
+  ansible.builtin.git:
     repo: "{{ item.value }}"
     dest: "{{ sources_root }}/{{ item.key }}"
-    clone: yes
-    update: yes
-    accept_hostkey: yes
-    force: yes
+    clone: true
+    update: true
+    accept_hostkey: true
+    force: true
     ssh_opts: "-o ForwardAgent=yes -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no"
   with_dict: "{{ albs_repos }}"
   when:
@@ -111,19 +179,26 @@
     - beholder_enabled or (item.key != "repo-beholder")
 
 - name: Sync ALBS sources to remote host
-  synchronize:
+  ansible.posix.synchronize:
     dest: "{{ sources_root }}"
     src: "{{ local_sources_root }}"
   when: use_already_cloned_repos and not use_local_connection
 
 - name: Sync ALBS volumes to remote host
-  synchronize:
+  ansible.posix.synchronize:
     dest: "{{ volumes_root }}"
     src: "{{ local_volumes_root }}"
   when: use_already_cloned_repos and not use_local_connection
 
+- name: Debug sources_root variable
+  ansible.builtin.debug:
+    var: sources_root
+  tags:
+    - debug
+
+# TODO: Add changed_when
 - name: Build NodeJS modules for albs-frontend
-  shell: |
+  ansible.builtin.shell: |
     export NVM_DIR="$HOME/.nvm"
     [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
     cd {{ sources_root }}/albs-frontend
@@ -131,10 +206,10 @@
   args:
     executable: /bin/bash
 
-- name: Create services folders
-  file:
+- name: Create services' folders
+  ansible.builtin.file:
     name: "{{ item.path }}"
     state: directory
     mode: "{{ item.mode }}"
-    force: no
+    force: true
   with_items: "{{ created_directories }}"
