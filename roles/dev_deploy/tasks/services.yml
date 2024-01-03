@@ -1,26 +1,53 @@
 ---
+#- name: Create and start services using Docker
+#  ansible.builtin.block:
+#    - name: Get list of services
+#      shell: "{{ docker_compose }} -p {{ container_name_prefix }} config --services"
+#      args:
+#        chdir: "{{ sources_root }}/albs-web-server"
+#      register: services
+#
+#    - name: Create and start each service individually
+#      shell: "{{ docker_compose }} -p {{ container_name_prefix }} up -d --build --force-recreate {{ item }}"
+#      args:
+#        chdir: "{{ sources_root }}/albs-web-server"
+#      when: item not in excluded_containers
+#      loop: "{{ services.stdout_lines }}"
+#  when:
+#    - excluded_containers
+#
+#- name: Create and start services
+#  ansible.builtin.shell: "{{ docker_compose }} -p {{ container_name_prefix }} --compatibility up -d --build --force-recreate"
+#  args:
+#    chdir: "{{ sources_root }}/albs-web-server"
+#  register: output
+#  when:
+#    - not excluded_containers or excluded_containers == ""
 
-- name: Create and start services
-  ansible.builtin.block:
-    - name: Get list of services
-      shell: "{{ docker_compose }} -p {{ container_name_prefix }} config --services"
-      args:
-        chdir: "{{ sources_root }}/albs-web-server"
-      register: services
+- name: Create and start services using Docker modules
+  block:
+    - name: Get list of services using docker_compose
+      community.docker.docker_compose:
+        project_src: "{{ sources_root }}/albs-web-server"
+        state: present
+        stopped: true
+      register: compose_output
 
     - name: Create and start each service individually
-      shell: "{{ docker_compose }} -p {{ container_name_prefix }} up -d --build --force-recreate {{ item }}"
-      args:
-        chdir: "{{ sources_root }}/albs-web-server"
+      community.docker.docker_compose:
+        project_src: "{{ sources_root }}/albs-web-server"
+        state: present
+        services: "{{ item }}"
+      loop: "{{ compose_output.services }}"
       when: item not in excluded_containers
-      loop: "{{ services.stdout_lines }}"
   when:
     - excluded_containers
 
 - name: Create and start services
-  ansible.builtin.shell: "{{ docker_compose }} -p {{ container_name_prefix }} --compatibility up -d --build --force-recreate"
-  args:
-    chdir: "{{ sources_root }}/albs-web-server"
-  register: output
+  community.docker.docker_compose:
+    project_src: "{{ sources_root }}/albs-web-server"
+    state: present
+    build: true
+    recreate: always
   when:
-    - not excluded_containers or excluded_containers == ""
+    - not excluded_containers or excluded_containers | length == 0
