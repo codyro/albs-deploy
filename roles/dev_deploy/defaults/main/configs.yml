@@ -46,6 +46,6 @@ generated_configs:
     dest: "{{ sources_root }}/albs-sign-file/"
     mode: "0655"
   - sname: alma-tests-cacher-vars.yaml.j2
-    dname: vars.yaml
+    dname: vars.env
     dest: "{{ sources_root}}/alma-tests-cacher"
     mode: "0655"
